@@ -1,24 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
+import Presentation from "@/components/Presentation";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
-  component: Index,
+  ssr: false, // el sistema de partículas es WebGL puro: nunca se renderiza en servidor
+  head: () => ({
+    meta: [
+      { title: "Relevo generacional | Centro de Eventos Fórum UPB" },
+      {
+        name: "description",
+        content:
+          "Presentación generativa en Three.js para la charla 'Relevo generacional: la ventaja que nadie está aprovechando' del Centro de Eventos Fórum UPB.",
+      },
+      { property: "og:title", content: "Relevo generacional | Fórum UPB" },
+      {
+        property: "og:description",
+        content:
+          "Un sistema de partículas continuo: huevo, vuelo joven y vuelo adulto, dos generaciones que se sostienen en el aire.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: Presentation,
 });
-
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
-}
