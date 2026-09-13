@@ -59,7 +59,7 @@ export default function Presentation() {
   }, [index]);
 
   useEffect(() => {
-    const opts = { width: 420, margin: 1, color: { dark: "#0b0d14", light: "#ffffff" } };
+    const opts = { width: 420, margin: 1, color: { dark: "#000000", light: "#ffffff" } };
     Promise.all([
       QRCode.toDataURL(QR_MEMORIAS, opts),
       QRCode.toDataURL(QR_REDES, opts),
