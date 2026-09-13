@@ -7,6 +7,36 @@ import { PresentationEngine } from "@/lib/presentation/engine";
 const QR_MEMORIAS = "https://www.upb.edu.co/es/centro-de-eventos-forum";
 const QR_REDES = "https://www.instagram.com/centrodeeventosupb";
 
+const HIGHLIGHT_CLASSES = {
+  young: "text-young",
+  adult: "text-adult",
+  impact: "text-impact",
+} as const;
+
+function HighlightedTitle({ slide }: { slide: (typeof SLIDES)[number] }) {
+  if (!slide.highlights?.length) return slide.title;
+
+  const highlights = [...slide.highlights].sort(
+    (a, b) => slide.title.indexOf(a.text) - slide.title.indexOf(b.text),
+  );
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+
+  for (const highlight of highlights) {
+    const start = slide.title.indexOf(highlight.text, cursor);
+    if (start < 0) continue;
+    if (start > cursor) parts.push(slide.title.slice(cursor, start));
+    parts.push(
+      <span key={`${start}-${highlight.text}`} className={HIGHLIGHT_CLASSES[highlight.tone]}>
+        {highlight.text}
+      </span>,
+    );
+    cursor = start + highlight.text.length;
+  }
+  if (cursor < slide.title.length) parts.push(slide.title.slice(cursor));
+  return parts;
+}
+
 export default function Presentation() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<PresentationEngine | null>(null);
@@ -26,7 +56,6 @@ export default function Presentation() {
 
   useEffect(() => {
     engineRef.current?.setSlide(index);
-    engineRef.current?.setPhoto(SLIDES[index]?.photo);
   }, [index]);
 
   useEffect(() => {
@@ -70,6 +99,18 @@ export default function Presentation() {
         go(-1);
       }}
     >
+      {slide.photo && (
+        <div key={slide.photo} className="animate-photo-enter absolute inset-0">
+          <img
+            src={slide.photo}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-background/65" />
+        </div>
+      )}
+
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
       {/* Zona de texto: plano semitransparente + espacio negativo. El texto manda. */}
@@ -85,7 +126,7 @@ export default function Presentation() {
               key={index}
               className="animate-rise text-balance font-display text-[clamp(2rem,4.4vw,4.4rem)] font-medium leading-[1.06] tracking-tight text-foreground"
             >
-              {slide.title}
+              <HighlightedTitle slide={slide} />
             </h1>
           </div>
 

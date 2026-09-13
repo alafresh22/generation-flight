@@ -7,8 +7,8 @@
  * objetivo se interpolan de forma continua hacia la nueva configuración.
  *
  * Dos poblaciones que coexisten hasta el final (nunca hay reemplazo):
- *   - Generación B (joven, cálida): nace contenida en la forma ovoide.
- *   - Generación A (adulta, fría): siempre en vuelo sobre una curva ya definida.
+ *   - Generación B (joven, rosa): nace contenida en la forma ovoide.
+ *   - Generación A (adulta, azul): siempre en vuelo sobre una curva ya definida.
  *
  * Las líneas entre ambas NO son decoración: representan la estela / vórtice de
  * ala que las aves migratorias aprovechan para ahorrar energía. Se engrosan
@@ -37,8 +37,9 @@ export const PARAMS = {
   pixelRatioCap: 1.75, // baja a 1 si el rendimiento cae en la pantalla del auditorio
 };
 
-const YOUNG_COLOR = new THREE.Color("#ffc46b");
-const ADULT_COLOR = new THREE.Color("#8fd4ff");
+const YOUNG_COLOR = new THREE.Color("#e96daa");
+const ADULT_COLOR = new THREE.Color("#08a9dd");
+const IMPACT_COLOR = new THREE.Color("#F7353F");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Estado macro por slide. Un solo cambio estructural por slide.
@@ -87,24 +88,27 @@ const SLIDE_STATES: State[] = [
 const vShader = /* glsl */ `
   attribute float aSize;
   attribute float aAlpha;
+  attribute vec3 aColor;
   varying float vAlpha;
+  varying vec3 vColor;
   void main() {
     vAlpha = aAlpha;
+    vColor = aColor;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_PointSize = aSize * (210.0 / -mv.z);
     gl_Position = projectionMatrix * mv;
   }
 `;
 const fShader = /* glsl */ `
-  uniform vec3 uColor;
   uniform float uOpacity;
   varying float vAlpha;
+  varying vec3 vColor;
   void main() {
     vec2 c = gl_PointCoord - 0.5;
     float d = dot(c, c);
     if (d > 0.25) discard;
     float a = smoothstep(0.25, 0.0, d);
-    gl_FragColor = vec4(uColor, a * vAlpha * uOpacity * 0.16);
+    gl_FragColor = vec4(vColor, a * vAlpha * uOpacity * 0.16);
   }
 `;
 
@@ -133,6 +137,7 @@ export class PresentationEngine {
   private aPos!: NumArr;
   private cPos!: NumArr;
   private yAlpha!: NumArr;
+  private yColor!: NumArr;
   private cAlpha!: NumArr;
 
   // datos estables por partícula
@@ -151,22 +156,15 @@ export class PresentationEngine {
   private flow!: THREE.LineSegments;
   private flowPos!: NumArr;
 
-  private photoMesh!: THREE.Mesh;
-  private photoMat!: THREE.MeshBasicMaterial;
-  private photoTargetOpacity = 0;
-  private texLoader = new THREE.TextureLoader();
-  private texCache = new Map<string, THREE.Texture>();
-
   constructor(private canvas: HTMLCanvasElement) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-    this.renderer.setClearColor(0x05060a, 1);
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    this.renderer.setClearColor(0x000000, 0);
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
     this.camera.position.set(0, 1.5, 38);
 
     this.buildCurves();
     this.buildParticles();
     this.buildLines();
-    this.buildPhoto();
     this.resize();
     window.addEventListener("resize", this.resize);
     this.loop();
@@ -203,15 +201,18 @@ export class PresentationEngine {
     const pos = new Float32Array(n * 3);
     const size = new Float32Array(n);
     const alpha = new Float32Array(n);
+    const colors = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       size[i] = rnd(0.5, 1.35);
       alpha[i] = 1;
+      color.toArray(colors, i * 3);
     }
     g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     g.setAttribute("aSize", new THREE.BufferAttribute(size, 1));
     g.setAttribute("aAlpha", new THREE.BufferAttribute(alpha, 1));
+    g.setAttribute("aColor", new THREE.BufferAttribute(colors, 3));
     const m = new THREE.ShaderMaterial({
-      uniforms: { uColor: { value: color }, uOpacity: { value: 1 } },
+      uniforms: { uOpacity: { value: 1 } },
       vertexShader: vShader,
       fragmentShader: fShader,
       transparent: true,
@@ -221,7 +222,7 @@ export class PresentationEngine {
     const p = new THREE.Points(g, m);
     p.frustumCulled = false;
     this.scene.add(p);
-    return { points: p, pos, alpha };
+    return { points: p, pos, alpha, colors };
   }
 
   /** Silueta local: cuerpo alargado + alas barridas. Nunca un ave dibujada:
@@ -255,13 +256,14 @@ export class PresentationEngine {
     this.young = y.points;
     this.yPos = arr(y.pos);
     this.yAlpha = arr(y.alpha);
+    this.yColor = arr(y.colors);
 
     const ad = this.makePoints(A, ADULT_COLOR);
     this.adult = ad.points;
     this.aPos = arr(ad.pos);
     (this.adult.material as THREE.ShaderMaterial).uniforms['uOpacity']!.value = 0;
 
-    const cu = this.makePoints(C, YOUNG_COLOR.clone().lerp(new THREE.Color("#ffffff"), 0.35));
+    const cu = this.makePoints(C, YOUNG_COLOR);
     this.currents = cu.points;
     this.cPos = arr(cu.pos);
     this.cAlpha = arr(cu.alpha);
@@ -307,7 +309,7 @@ export class PresentationEngine {
     this.flow = new THREE.LineSegments(
       g,
       new THREE.LineBasicMaterial({
-        color: 0xbfe6ff,
+        color: ADULT_COLOR,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
@@ -322,7 +324,7 @@ export class PresentationEngine {
     this.trailLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(pts),
       new THREE.LineBasicMaterial({
-        color: 0x9fd8ff,
+        color: ADULT_COLOR,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
@@ -350,7 +352,7 @@ export class PresentationEngine {
       const line = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(curve.getPoints(120)),
         new THREE.LineBasicMaterial({
-          color: 0xffc46b,
+          color: YOUNG_COLOR,
           transparent: true,
           opacity: 0,
           blending: THREE.AdditiveBlending,
@@ -361,30 +363,6 @@ export class PresentationEngine {
       this.branches.push(line);
       this.scene.add(line);
     }
-  }
-
-  private buildPhoto() {
-    this.photoMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-    this.photoMesh = new THREE.Mesh(new THREE.PlaneGeometry(17, 11.3), this.photoMat);
-    this.photoMesh.position.set(12.5, 8, -18);
-    this.photoMesh.rotation.y = -0.18;
-    this.scene.add(this.photoMesh);
-  }
-
-  setPhoto(url?: string) {
-    if (!url) {
-      this.photoTargetOpacity = 0;
-      return;
-    }
-    let tex = this.texCache.get(url);
-    if (!tex) {
-      tex = this.texLoader.load(url);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      this.texCache.set(url, tex);
-    }
-    this.photoMat.map = tex;
-    this.photoMat.needsUpdate = true;
-    this.photoTargetOpacity = 0.6; // integrada, nunca compitiendo con el texto
   }
 
   setSlide(i: number) {
@@ -478,7 +456,9 @@ export class PresentationEngine {
       const s0 = this.seed[i3];
 
       // 1) huevo, con vibración interna que empuja sin romper la forma
-      const breathe = 1 + S.tension * 0.06 * Math.sin(t * 6 + s0 * 30);
+      // Slide 2: el empuje interno gana amplitud, pero conserva la forma cerrada.
+      const tensionAmplitude = this.slide === 1 ? 0.14 : 0.06;
+      const breathe = 1 + S.tension * tensionAmplitude * Math.sin(t * 6 + s0 * 30);
       let tx = this.egg[i3] * breathe;
       let ty = this.egg[i3 + 1] * breathe;
       let tz = this.egg[i3 + 2] * breathe;
@@ -519,6 +499,11 @@ export class PresentationEngine {
         alpha = 1 + b * 2.5;
       }
 
+      const colorMix = burstAmp > 0.001 && this.swap[i] > 0.9 ? burstAmp : 0;
+      this.yColor[i3] = YOUNG_COLOR.r + (IMPACT_COLOR.r - YOUNG_COLOR.r) * colorMix;
+      this.yColor[i3 + 1] = YOUNG_COLOR.g + (IMPACT_COLOR.g - YOUNG_COLOR.g) * colorMix;
+      this.yColor[i3 + 2] = YOUNG_COLOR.b + (IMPACT_COLOR.b - YOUNG_COLOR.b) * colorMix;
+
       this.yPos[i3] += (fx - this.yPos[i3]) * follow;
       this.yPos[i3 + 1] += (fy - this.yPos[i3 + 1]) * follow;
       this.yPos[i3 + 2] += (fz - this.yPos[i3 + 2]) * follow;
@@ -526,6 +511,7 @@ export class PresentationEngine {
     }
     this.young.geometry.attributes['position']!.needsUpdate = true;
     this.young.geometry.attributes['aAlpha']!.needsUpdate = true;
+    this.young.geometry.attributes['aColor']!.needsUpdate = true;
 
     // ── generación adulta ───────────────────────────────────────────────────
     const A = PARAMS.adultCount;
@@ -603,10 +589,6 @@ export class PresentationEngine {
       line.geometry.setDrawRange(0, Math.floor(S.branch * 121));
       line.position.y = helixY;
     }
-
-    // foto del guion: integrada en la composición, nunca reemplaza al sistema
-    this.photoMat.opacity += (this.photoTargetOpacity - this.photoMat.opacity) * dt * 1.6;
-    this.photoMesh.visible = this.photoMat.opacity > 0.01;
 
     // cámara: acompaña, nunca compite con la lectura del texto
     const camY = 1.5 + helixY * 0.6 + S.calm * 0.8;
